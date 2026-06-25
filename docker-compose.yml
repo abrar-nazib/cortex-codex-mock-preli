@@ -42,7 +42,7 @@ services:
       start_period: 10s
     depends_on:
       normalizer:
-        condition: service_started
+        condition: service_healthy
 
   # ---- Stub services -----------------------------------------------------
   # These exist only so the compose graph is complete and so backend has a
@@ -58,12 +58,20 @@ services:
     command: ["sh", "-c", "echo 'frontend: code not ready yet' && sleep infinity"]
 
   normalizer:
-    image: alpine:3.20
+    build:
+      context: ./normalizer
     container_name: cortex-normalizer
     restart: unless-stopped
     ports:
       - "38191:9000"
-    command: ["sh", "-c", "echo 'normalizer: code not ready yet' && sleep infinity"]
+    env_file:
+      - ./normalizer/.env
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 volumes:
   backend-data:
