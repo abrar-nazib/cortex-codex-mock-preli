@@ -62,8 +62,7 @@ export default function QueueStormUI() {
     setResult(null);
 
     try {
-      const backendUrl = process.env.NEXT_BACKEND_URL;
-      const res = await fetch(`${backendUrl}/sort-ticket`, {
+      const res = await fetch("/api/sort-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -74,12 +73,13 @@ export default function QueueStormUI() {
         })
       });
 
-      if (!res.ok) throw new Error("API failed");
+      if (!res.ok) throw new Error(`API failed: ${res.status}`);
       const data = await res.json();
       setResult(data);
       setLoading(false);
     } catch (err: any) {
       // Graceful fallback mocking for demonstration
+      console.error("[sort-ticket] request failed, using mock fallback:", err);
       setTimeout(() => {
         let simulatedCaseType = "other";
         let simulatedSeverity = "low";
