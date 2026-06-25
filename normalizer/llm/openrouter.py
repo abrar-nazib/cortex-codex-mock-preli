@@ -29,8 +29,10 @@ class OpenRouterProvider(LLMProvider):
             "response_format": {"type": "json_object"},
         }
         try:
+            # OpenRouter is strict about the URL path — no double slashes.
+            base = s.openrouter_base_url.rstrip("/")
             resp = httpx.post(
-                f"{s.openrouter_base_url}/chat/completions",
+                f"{base}/chat/completions",
                 headers=headers,
                 json=payload,
                 timeout=s.request_timeout,

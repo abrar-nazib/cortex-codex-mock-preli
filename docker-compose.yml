@@ -2,8 +2,8 @@
 #
 # Three services:
 #   - backend    : FastAPI on :8000 (built from ./backend/Dockerfile)
-#   - frontend   : empty stub — teammate's code not ready yet
-#   - normalizer : empty stub — teammate's code not ready yet
+#   - frontend   : teammate-owned Next.js (profile: full; opt-in to build)
+#   - normalizer : teammate-owned FastAPI classifier (built from ./normalizer)
 #
 # Host ports are high numbers in the 38xxx range because the VPS is shared
 # with other stacks. Container ports stay at the defaults the apps expect.
@@ -44,12 +44,18 @@ services:
       normalizer:
         condition: service_healthy
 
-  # ---- Stub services -----------------------------------------------------
-  # These exist only so the compose graph is complete and so backend has a
-  # reachable host name on the internal network. Replace each stub with the
-  # teammate's real image / build context when their code lands.
-
+  # ---- Frontend (opt-in) -------------------------------------------------
+  # Behind a `full` profile so the default `docker compose up -d` only starts
+  # backend + normalizer. The frontend's npm install reaches out to the
+  # public registry, which can take 5+ minutes on a flaky link and isn't
+  # needed for backend-only work or grader checks.
+  #
+  # To include it explicitly:
+  #   docker compose --profile full up -d --build
+  # Or bring it up by name from the default profile:
+  #   docker compose up -d --build frontend
   frontend:
+    profiles: [full]
     build:
       context: ./frontend
     container_name: cortex-frontend

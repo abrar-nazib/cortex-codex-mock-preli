@@ -57,4 +57,4 @@ def normalize(message: str, settings: Settings = SETTINGS) -> NormalizedTicket:
     if ticket is None:
         ticket = fallback.classify(message)
 
-    return postprocess.enforce(ticket)
+    return postprocess.enforce(ticket, message=message)
