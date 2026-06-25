@@ -213,7 +213,7 @@ export default function QueueStormUI() {
           {/* Results Area */}
           <div className="lg:col-span-3">
             {!loading && !result && (
-              <div className="h-full min-h-[300px] border border-dashed rounded-2xl flex flex-col items-center justify-center text-muted-foreground p-8 text-center space-y-3 bg-card/30">
+              <div className="h-full min-h-75 border border-dashed rounded-2xl flex flex-col items-center justify-center text-muted-foreground p-8 text-center space-y-3 bg-card/30">
                 <div className="p-3 bg-muted/50 rounded-full">
                   <LightningIcon />
                 </div>
@@ -233,7 +233,7 @@ export default function QueueStormUI() {
                 <div className={`bg-card border rounded-2xl p-6 md:p-8 shadow-sm relative overflow-hidden ${result.human_review_required ? 'border-destructive/30' : ''}`}>
                   {result.human_review_required && (
                     <div className="absolute top-0 right-0 w-32 h-32 overflow-hidden">
-                      <div className="absolute top-6 -right-8 w-[140px] bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider text-center py-1.5 rotate-45 shadow-sm">
+                      <div className="absolute top-6 -right-8 w-35 bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider text-center py-1.5 rotate-45 shadow-sm">
                         Manual Review
                       </div>
                     </div>
