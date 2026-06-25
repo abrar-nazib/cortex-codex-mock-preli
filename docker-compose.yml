@@ -1,0 +1,63 @@
+# Root compose for the cortex-codex-mock-preli mock preliminary.
+#
+# Three services:
+#   - backend    : FastAPI on :8000 (built from ./backend/Dockerfile)
+#   - frontend   : empty stub — teammate's code not ready yet
+#   - normalizer : empty stub — teammate's code not ready yet
+#
+# Override env via a .env file at the repo root or `docker compose --env-file`.
+# SQLite lives in a named volume so data survives container restarts.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: cortex-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: "8000"
+      NORMALIZER_URL: http://normalizer:9000
+      NORMALIZER_TIMEOUT_S: "20"
+      NORMALIZER_MAX_RETRIES: "2"
+      NORMALIZER_RETRY_BACKOFF_S: "0.5"
+      DATABASE_URL: sqlite:////data/tickets.db
+      SAFETY_FAIL_LOUD: "true"
+    volumes:
+      - backend-data:/data
+    healthcheck:
+      # /health is the in-process probe from main.py; doesn't touch the normalizer.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      normalizer:
+        condition: service_started
+
+  # ---- Stub services -----------------------------------------------------
+  # These exist only so the compose graph is complete and so backend has a
+  # reachable host name on the internal network. Replace each stub with the
+  # teammate's real image / build context when their code lands.
+
+  frontend:
+    image: alpine:3.20
+    container_name: cortex-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    command: ["sh", "-c", "echo 'frontend: code not ready yet' && sleep infinity"]
+
+  normalizer:
+    image: alpine:3.20
+    container_name: cortex-normalizer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    command: ["sh", "-c", "echo 'normalizer: code not ready yet' && sleep infinity"]
+
+volumes:
+  backend-data:
