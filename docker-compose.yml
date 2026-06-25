@@ -5,6 +5,12 @@
 #   - frontend   : empty stub — teammate's code not ready yet
 #   - normalizer : empty stub — teammate's code not ready yet
 #
+# Host ports are high numbers in the 38xxx range because the VPS is shared
+# with other stacks. Container ports stay at the defaults the apps expect.
+#   backend    -> host 38181, container 8000
+#   frontend   -> host 38283, container 5173
+#   normalizer -> host 38191, container 9000
+#
 # Override env via a .env file at the repo root or `docker compose --env-file`.
 # SQLite lives in a named volume so data survives container restarts.
 
@@ -15,7 +21,7 @@ services:
     container_name: cortex-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "38181:8000"
     environment:
       BACKEND_HOST: 0.0.0.0
       BACKEND_PORT: "8000"
@@ -48,7 +54,7 @@ services:
     container_name: cortex-frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "38283:5173"
     command: ["sh", "-c", "echo 'frontend: code not ready yet' && sleep infinity"]
 
   normalizer:
@@ -56,7 +62,7 @@ services:
     container_name: cortex-normalizer
     restart: unless-stopped
     ports:
-      - "9000:9000"
+      - "38191:9000"
     command: ["sh", "-c", "echo 'normalizer: code not ready yet' && sleep infinity"]
 
 volumes:
