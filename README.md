@@ -1,312 +1,222 @@
-# cortex-codex-mock-preli
+# CORTEX — QueueStorm Warmup
 
-Mock preliminary submission for SUST CSE Carnival 2026 — Codex Community Hackathon.
+**Team CORTEX** submission for the SUST CSE Carnival 2026 — Codex Community Hackathon,
+Mock Preliminary Round. A small public HTTPS service that classifies one
+customer support ticket at a time into a structured JSON triage record.
 
-## Stack
+- Submission form: <https://forms.gle/eqVNc5dzhrwaPipJ8>
+- Repo: <https://github.com/abrar-nazib/cortex-codex-mock-preli>
+- Live API base URL: _see the submission form response or [DEPLOY.md](deploy/DEPLOY.md)_
 
-Three Docker services defined in [`docker-compose.yml`](docker-compose.yml):
-
-- **`backend`** — FastAPI on host `:38181`, talks to the normalizer over HTTP
-- **`frontend`** — empty alpine stub (teammate's code not ready yet)
-- **`normalizer`** — teammate-owned classifier, host `:38191`, internal `:9000`
-
-Run locally:
-
-```bash
-docker compose up -d --build
-curl http://localhost:38181/health
-# -> {"status":"ok","normalizer_url":"http://normalizer:9000"}
-```
-
-Swagger UI for the backend: <http://localhost:38181/docs>
+The original task spec is in [`docs/Submission-Warmup_Mock_Preliminary.pdf`](docs/Submission-Warmup_Mock_Preliminary.pdf).
 
 ---
 
-## Test requests for `POST /sort-ticket`
+## What the service does
 
-Paste each block into the Swagger **Try it out → Execute** box at
-<http://localhost:38181/docs#/default/sort_ticket_sort_ticket_post>.
-
-### How each test is annotated
-
-Under every paste-ready JSON block you'll see:
-
-- **Expected** — the right answer per the spec (§4.2 case_type↔department, §7 sample table, §5 safety rule).
-- **Why** — one line tying back to the spec.
-- **Likely failure** — the mistake a typical LLM-based normalizer will make if it slips.
-
-Messages are deliberately long, messy, and in **banglish** (Bangla written in
-Latin letters mixed with English), since that's how a real customer from
-Bangladesh actually types.
-
----
-
-### 1. The five spec sample cases (verbatim)
-
-These are exactly the messages from §7 of the spec. Use them as a sanity
-check that the wiring is alive before trying the messy ones.
+You `POST` one customer message to `/sort-ticket`. You get back:
 
 ```json
 {
   "ticket_id": "T-001",
-  "channel": "app",
-  "locale": "en",
-  "message": "I sent 3000 to wrong number"
+  "case_type": "wrong_transfer",
+  "severity": "high",
+  "department": "dispute_resolution",
+  "agent_summary": "Customer reports sending 3000 to the wrong number and needs help recovering it.",
+  "human_review_required": true,
+  "confidence": 0.9
 }
 ```
-- **Expected**: `wrong_transfer` · `high` · `dispute_resolution` · `human_review_required: true`
-- **Why**: §7 sample #1.
-- **Likely failure**: model returns `human_review_required: false`. Spec §4.3
-  only *forces* it for `critical`/`phishing`, but for any money-already-sent
-  case a sane bank would route it to human review.
 
-```json
-{
-  "ticket_id": "T-002",
-  "channel": "app",
-  "locale": "en",
-  "message": "Payment failed but balance deducted?"
-}
-```
-- **Expected**: `payment_failed` · `high` · `payments_ops` · `human_review_required: true`
-- **Why**: §7 sample #2 + §4.2 row.
-- **Likely failure**: model picks `wrong_transfer` because "deducted" reads
-  like money leaving the account.
+Two endpoints, both publicly reachable over HTTPS, no auth (§1 of the spec):
 
-```json
-{
-  "ticket_id": "T-003",
-  "channel": "sms",
-  "locale": "en",
-  "message": "Someone called asking my OTP, is that bKash?"
-}
-```
-- **Expected**: `phishing_or_social_engineering` · `critical` · `fraud_risk` · `human_review_required: true`
-- **Why**: §7 sample #3 + §4.2 row.
-- **Likely failure**: model downgrades severity to `high` because the
-  customer sounds calm — phishing must be `critical` per spec.
+| Method | Path           | SLA      | Purpose                                              |
+|--------|----------------|----------|------------------------------------------------------|
+| GET    | `/health`      | < 10 s   | Service health                                       |
+| POST   | `/sort-ticket` | < 30 s   | Classify one customer CRM ticket                     |
 
-```json
-{
-  "ticket_id": "T-004",
-  "channel": "app",
-  "locale": "en",
-  "message": "Please refund my last transaction, I changed my mind"
-}
-```
-- **Expected**: `refund_request` · `low` · `customer_support` · `human_review_required: false`
-- **Why**: §7 sample #4 + §4.2 row for plain refund.
-- **Likely failure**: model routes to `dispute_resolution` (contested-refund
-  column) instead of `customer_support` because "changed my mind" reads
-  emotional.
+Response enums are locked (§4):
 
-```json
-{
-  "ticket_id": "T-005",
-  "channel": "app",
-  "locale": "en",
-  "message": "App crashed when I opened it"
-}
-```
-- **Expected**: `other` · `low` · `customer_support` · `human_review_required: false`
-- **Why**: §7 sample #5.
-- **Likely failure**: model picks `payment_failed` because "crashed" + "open"
-  sometimes get conflated by weaker classifiers.
+- `case_type`: `wrong_transfer` · `payment_failed` · `refund_request` · `phishing_or_social_engineering` · `other`
+- `severity`: `low` · `medium` · `high` · `critical`
+- `department`: `customer_support` · `dispute_resolution` · `payments_ops` · `fraud_risk`
 
 ---
 
-### 2. Long messy banglish — `wrong_transfer`
+## Architecture
 
-```json
-{
-  "ticket_id": "T-006",
-  "channel": "app",
-  "locale": "mixed",
-  "message": "vai ekta problem hoise, ami sokal 10:30 min e 7500 taka bKash korchi apnar merchant number chinta kore, kintu number ekta digit bhul likhe geche mone hoy, mone hoy last 2 digit ulta hoye geche. recipient er naam Shamim, she toh amar cheneo chene na. ami ki kichu korte parbo? please urgent help needed, customer care e call korle keu uthteche na"
-}
+Three independently deployed services, communicating only over HTTP. Each is
+owned by a different teammate and lives in its own directory under this repo:
+
 ```
-- **Expected**: `wrong_transfer` · `high` · `dispute_resolution` · `human_review_required: true`
-- **Why**: "bKash korchi ... bhul likhe geche" = money sent to wrong number.
-  §4.2 routes to `dispute_resolution`.
-- **Likely failure**: model classifies as `other` because the word
-  "wrong_transfer" never literally appears — the user described the
-  situation in a story.
-
-### 3. Long messy banglish — `payment_failed` with deduction
-
-```json
-{
-  "ticket_id": "T-007",
-  "channel": "merchant_portal",
-  "locale": "mixed",
-  "message": "merchant panel theke bill pay korar try korlam, system bollteche transaction successful, kintu amar bank statement e dekhtechi 12,400 taka kateche. app e balance update hoyni, kintu SMS eseche taka katteche. ektu bujhiye bolen vaia ki korbo, ekhon customer dara amake dhamka dicche"
-}
+                public HTTPS
+                       │
+                       ▼
+              ┌────────────────┐
+              │    frontend    │   Next.js app, served from
+              │                │   hackathon.cortextechnologies.net
+              └───────┬────────┘
+                      │ HTTPS / JSON
+                      ▼
+              ┌────────────────┐         POST /normalize          ┌──────────────┐
+              │    backend     │ ──────────────────────────────▶ │  normalizer  │
+              │                │ ◀────────────────────────────── │              │
+              │  FastAPI + DB  │       structured JSON           │  LLM classify│
+              └────────────────┘                                  └──────────────┘
+                       │
+                       ▼
+                  SQLite file (named volume)
 ```
-- **Expected**: `payment_failed` · `high` · `payments_ops` · `human_review_required: true`
-- **Why**: SMS says debit, app says nothing happened = failed-but-deducted.
-- **Likely failure**: model picks `wrong_transfer` (because money "went"
-  somewhere) or `other`.
 
-### 4. Phishing — banglish with phonetically spelled OTP
+| Service     | Directory     | Public URL (HTTPS)                     | Internal port |
+|-------------|---------------|----------------------------------------|---------------|
+| `frontend`  | `frontend/`   | `https://hackathon.cortextechnologies.net`    | `3000`         |
+| `backend`   | `backend/`    | `https://hackathonapi.cortextechnologies.net` | `8000`         |
+| `normalizer`| `normalizer/` | _internal only — not exposed publicly_       | `9000`         |
 
-```json
-{
-  "ticket_id": "T-008",
-  "channel": "sms",
-  "locale": "mixed",
-  "message": "vai ekjon lok amake call kore bollo ami bKash theke bollche, tader ekta verification campaign cholche, amar mobile number verify korte hobe, tader pathano link e click kore amar o t i p (one time password) diye dile 5000 taka bonus pabo. ami kichu korini, ektu janaben eta ki scam?"
-}
+Host bindings on the VPS use high-numbered ports (`38181`, `38283`, `38191`)
+to avoid colliding with other stacks on the shared box.
+
+### How a request flows
+
+1. Caller hits `POST https://hackathonapi.cortextechnologies.net/sort-ticket`.
+2. `backend` validates the request, persists the raw ticket by `ticket_id` (upsert).
+3. `backend` calls `POST <normalizer>:9000/normalize` with the full ticket schema, retrying on 5xx / timeout.
+4. The normalizer returns `case_type`, `severity`, `department`, `agent_summary`, `human_review_required`, `confidence`.
+5. `backend` merges that into its base model (which holds every field needed to answer the grader) and applies the **safety filter** on `agent_summary` (§5). If the agent's summary contains an imperative request for a credential, the call returns **HTTP 500** — the grader auto-fails that case.
+6. The merged record is persisted and returned to the caller.
+
+The normalizer's classifier is the openrouter model `google/gemini-2.5-flash`,
+configured via `NORMALIZER_PROVIDER=openrouter` in `normalizer/.env`. If the
+LLM call fails for any reason, the normalizer falls back to a deterministic
+keyword classifier that handles every spec case correctly.
+
+### Key design rules
+
+- **One repo, three directories.** Each teammate owns their service. Cross-directory changes are announced in chat before commit.
+- **Service-to-service over HTTP only.** No shared Python imports across `frontend/`, `backend/`, `normalizer/`.
+- **Schemas live in the backend.** The backend is the public contract surface. Field name changes require telling the other two teammates before merging.
+- **Secrets only via env vars.** No `OPENROUTER_API_KEY` or DB credentials in the repo. The mock round's `.env` files contain test secrets that the grader will skip.
+- **No GPU.** CPU-only VPS, `docker compose up` only.
+
+### Project layout
+
 ```
-- **Expected**: `phishing_or_social_engineering` · `critical` · `fraud_risk` · `human_review_required: true`
-- **Why**: classic "verify with OTP for cashback" social-engineering script.
-  §4.2 → `fraud_risk`. Even though the customer didn't share the code, the
-  *attempt* is the reportable event.
-- **Likely failure**: model skips because "o t i p" is split with spaces and
-  the literal string `OTP` doesn't appear. Normalizer must understand
-  banglish phonetics.
-
-### 5. Phishing — full card number inside the message
-
-```json
-{
-  "ticket_id": "T-009",
-  "channel": "call_center",
-  "locale": "bn",
-  "message": "ami ekjon customer ke call e help korte gesilam, she bollo tar card number 4111 1111 1111 1111 theke taka keteche but kono purchase hoyni, tumi ki kore dekhba? she toh amake PIN o jiggesh korlo"
-}
+cortex-codex-mock-preli/
+├── README.md                      ← you are here
+├── docker-compose.yml             ← backend + normalizer by default;
+│                                    `--profile full` adds the frontend
+├── .github/workflows/cd.yml       ← push-to-main SSH deploy
+├── deploy/
+│   ├── DEPLOY.md                  ← runbook for the VPS + the live URL
+│   └── nginx/cortex-codex.conf    ← nginx vhost config (HTTPS termination)
+├── backend/                       ← FastAPI service (this team owns it)
+│   ├── README.md
+│   ├── Dockerfile
+│   ├── pyproject.toml
+│   ├── app/                       ← main, config, db, models, schemas,
+│   │                                 normalizer_client, safety, pipeline
+│   └── tests/
+├── normalizer/                    ← LLM classifier (teammate-owned)
+│   ├── README.md
+│   ├── CLAUDE.md
+│   ├── Dockerfile
+│   └── …
+├── frontend/                      ← Next.js app (teammate-owned)
+│   ├── README.md
+│   └── …
+└── docs/
+    ├── TEST_PLAN.md               ← 15 paste-ready test requests + assertions
+    ├── BENCHMARK.md               ← first-round prompt-diagnostic writeup
+    ├── BENCHMARK_FINAL.md         ← README + BANKING77 stress benchmark
+    └── Submission-Warmup_Mock_Preliminary.pdf
 ```
-- **Expected** (HTTP **500**): `agent_summary` will echo either the 16-digit
-  PAN or the word `PIN`, tripping the safety regex in `app/safety.py`.
-- **Why**: §5 — "any response that asks the customer to share PIN, OTP,
-  password, or full card number will fail that test case automatically."
-  Including those tokens anywhere in the summary fails.
-- **Likely failure**: normalizer leaks the card number / PIN into
-  `agent_summary`. Backend is correct to 500; the failure is in the
-  normalizer's postprocess, not in classification.
-
-### 6. Negation — phishing that DIDN'T happen
-
-```json
-{
-  "ticket_id": "T-010",
-  "channel": "app",
-  "locale": "en",
-  "message": "just reporting that a guy called me asking for my OTP and I hung up immediately, did NOT share anything. want to make sure my account is safe, can someone check the recent login activity please? thanks"
-}
-```
-- **Expected**: `phishing_or_social_engineering` · `medium` · `fraud_risk` · `human_review_required: true`
-- **Why**: a phishing *attempt* against the customer still routes to fraud
-  risk; severity is not `critical` because no compromise occurred.
-- **Likely failure**: model returns `other` because the customer explicitly
-  says "did NOT share" — the negation traps a naive classifier.
-
-### 7. Two stacked intents — refund of a failed payment
-
-```json
-{
-  "ticket_id": "T-011",
-  "channel": "app",
-  "locale": "en",
-  "message": "I tried to pay 2300 taka to a merchant yesterday, payment failed message ashse kintu 2300 taka kete geche amar account theke. I want my refund back immediately. Also please add 500 taka compensation for the hassle, this is not the first time"
-}
-```
-- **Expected**: `payment_failed` · `high` · `payments_ops` · `human_review_required: true`
-- **Why**: the underlying event is failed-and-deducted; "refund" here is a
-  remedy, not a voluntary cancellation. §4.2 row says payment_failed →
-  payments_ops, not refund_request → dispute_resolution.
-- **Likely failure**: model picks `refund_request` because the word "refund"
-  appears explicitly. The spec resolves the conflict in favor of the
-  underlying failure mode.
-
-### 8. Sarcasm / joke phishing
-
-```json
-{
-  "ticket_id": "T-012",
-  "channel": "sms",
-  "locale": "en",
-  "message": "lol my cousin just pranked me by pretending to be from bKash and asking for my password over the phone 😂😂 I knew it was him the whole time, just sharing the funny story. no help needed, ignore this"
-}
-```
-- **Expected**: `other` · `low` · `customer_support` · `human_review_required: false`
-- **Why**: no fraud event, no money at risk, customer says "no help needed".
-  Even though "password" + "bKash" + phone both appear, the framing is a
-  joke. Spec §5 cares about the agent_summary, not the inbound message.
-- **Likely failure**: model flags as phishing purely on keyword presence.
-
-### 9. Refund — contested
-
-```json
-{
-  "ticket_id": "T-013",
-  "channel": "call_center",
-  "locale": "mixed",
-  "message": "amar bhai 5 din age ekta recharge korechilo 550 taka, kintu recharge hoyni phone e. ami customer care e call korlam, tara bollo 48 hour wait korte. 5 din hoye gelo, refund paise ni. please dispute kore refund ta den"
-}
-```
-- **Expected**: `refund_request` · `medium` · `dispute_resolution` · `human_review_required: true`
-- **Why**: §4.2 row "contested refund_request → dispute_resolution". The
-  dispute framing bumps it out of plain customer_support.
-- **Likely failure**: model picks the low-severity `customer_support` row
-  for refund_request because severity rules aren't specified in §4.2.
-
-### 10. Suspicious-looking but legit request
-
-```json
-{
-  "ticket_id": "T-014",
-  "channel": "app",
-  "locale": "en",
-  "message": "I want to update my registered phone number on my bKash account. My current number is 01712345678 and I want to change it to 01987654321. Please share the procedure"
-}
-```
-- **Expected**: `other` · `low` · `customer_support` · `human_review_required: false`
-- **Why**: routine account change, not phishing. Spec §4.1 `other` catches
-  "anything not covered above".
-- **Likely failure**: model flags as phishing because the message contains
-  a phone number + a request to "share" something.
-
-### 11. Repeated punctuation + caps rage
-
-```json
-{
-  "ticket_id": "T-015",
-  "channel": "sms",
-  "locale": "en",
-  "message": "WHY IS MY BALANCE DEDUCTED BUT TRANSACTION FAILED!!!!! I TRIED 4 TIMES TODAY, ALL 4 TIMES SAME PROBLEM. 8000 TAKA GONE!!! THIS IS RIDICULOUS, FIX IT NOWWWWWWW"
-}
-```
-- **Expected**: `payment_failed` · `high` · `payments_ops` · `human_review_required: true`
-- **Why**: explicit "balance deducted but transaction failed" — §4.2 row.
-- **Likely failure**: model truncates the message or picks `wrong_transfer`
-  because "GONE" reads like money moved.
 
 ---
 
-## What to look for in every response
+## Running it locally
 
-- `case_type` ∈ {`wrong_transfer`, `payment_failed`, `refund_request`, `phishing_or_social_engineering`, `other`}
-- `severity` ∈ {`low`, `medium`, `high`, `critical`}
-- `department` ∈ {`customer_support`, `dispute_resolution`, `payments_ops`, `fraud_risk`}
-- `human_review_required == true` for every phishing case and every `critical` severity
-- `confidence` ∈ [0.0, 1.0]
-- `agent_summary` must NEVER contain `PIN`, `OTP`, `password`, or a 13–19 digit run. If it does, the backend returns **HTTP 500** — that's the spec §5 safety rule working.
+```bash
+# Backend + normalizer only — fast (a few seconds). Default profile.
+docker compose up -d --build
 
-**T-009 is the only one expected to fail loudly** (HTTP 500). If the
-normalizer scrubs the card number before returning, `T-009` will return
-200 with a sanitized fallback.
+# Add the frontend (opt-in; needs npm registry access)
+docker compose --profile full up -d --build
+
+# Health probe
+curl -s http://localhost:38181/health
+# -> {"status":"ok","normalizer_url":"http://normalizer:9000"}
+
+# Classify a ticket
+curl -s -X POST http://localhost:38181/sort-ticket \
+  -H 'content-type: application/json' \
+  -d '{"ticket_id":"T-001","channel":"app","locale":"en",
+       "message":"I sent 3000 taka to a wrong number this morning, please help me get it back"}'
+```
+
+Swagger UI: <http://localhost:38181/docs>
+
+### Unit + integration tests
+
+```bash
+cd backend
+pip install -e ".[dev]"
+pytest -q                                # backend unit tests
+pytest tests/test_safety.py -q           # safety regex unit tests
+```
 
 ---
 
-## What to look for in every response
+## Live deployment
 
-- `case_type` ∈ {`wrong_transfer`, `payment_failed`, `refund_request`, `phishing_or_social_engineering`, `other`}
-- `severity` ∈ {`low`, `medium`, `high`, `critical`}
-- `department` ∈ {`customer_support`, `dispute_resolution`, `payments_ops`, `fraud_risk`}
-- `human_review_required == true` for every phishing case and every `critical` severity
-- `confidence` ∈ [0.0, 1.0]
-- `agent_summary` must NEVER contain `PIN`, `OTP`, `password`, or a 13–19 digit run. If it does, the backend returns **HTTP 500** — that's the spec §5 safety rule working.
+See [`deploy/DEPLOY.md`](deploy/DEPLOY.md) for the runbook: VPS provisioning,
+nginx config, GitHub Actions secrets, and the deploy workflow
+(`.github/workflows/cd.yml`) that SSHs into the VPS on every push to `main`
+and runs `docker compose up -d --build`.
 
-**T-009 is the only one expected to fail loudly** (HTTP 500). If the
-normalizer scrubs the card number before returning, `T-009` will return
-200 with a sanitized fallback.
+The deployment is reproducible from this repo alone — the spec says "the
+GitHub repository must contain proper deployment replication documentation /
+runbook of the solution", so the runbook is the primary deliverable alongside
+the live URL.
+
+---
+
+## Submission
+
+The Google form asks for six fields. The repo provides:
+
+| Field                 | Value                                                           |
+|-----------------------|-----------------------------------------------------------------|
+| Team name             | **CORTEX**                                                      |
+| GitHub repository URL | `https://github.com/abrar-nazib/cortex-codex-mock-preli`        |
+| Live API base URL     | `https://hackathonapi.cortextechnologies.net` (see `deploy/DEPLOY.md`) |
+| Deployment platform   | Self-hosted VPS via GitHub Actions + docker compose             |
+| LLM used              | Yes — `openrouter/google/gemini-2.5-flash` for classification   |
+| Known issues          | See [`docs/BENCHMARK_FINAL.md`](docs/BENCHMARK_FINAL.md)        |
+
+If the live URL is unreachable, the grader will fall back to deploying
+locally using this repo + `deploy/DEPLOY.md`.
+
+---
+
+## Tests, benchmarks, and known limitations
+
+- **15 spec-shaped requests** with assertions: [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md). Score on the current stack: **15 / 15**.
+- **Real-world banking-query stress (BANKING77)**: score on the current stack: **1 / 16**. Polite inquiry voice ("Why was I charged twice?") gets classified as `other`. Analysis and three concrete fixes live in [`docs/BENCHMARK_FINAL.md`](docs/BENCHMARK_FINAL.md).
+- **First-round prompt diagnostic** when the LLM was silently falling back: [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
+
+We chose to ship on the README-test score (15/15) rather than chase BANKING77
+with prompt/rule changes that risk regressing the spec-shaped cases.
+
+---
+
+## Team & ownership
+
+| Directory      | Owner         | Stack                                |
+|----------------|---------------|--------------------------------------|
+| `backend/`     | CORTEX backend | Python 3.11 · FastAPI · SQLAlchemy · httpx |
+| `normalizer/`  | CORTEX normalizer | Python 3.11 · FastAPI · Pydantic · OpenRouter |
+| `frontend/`    | CORTEX frontend | Next.js (TypeScript) |
+
+We all work on `main` directly — single repo, shared history, no long-lived
+branches (the round's training exercise is exactly this collaboration shape).

@@ -81,6 +81,21 @@ def test_safety_scrub_removes_credential_requests(unsafe):
         assert term not in cleaned.lower() or "withheld" in cleaned.lower()
 
 
+@pytest.mark.parametrize(
+    "safe_bare_mention",
+    [
+        "Customer reports a sudden loss of 300,000 BDT after receiving a call "
+        "from someone impersonating the bank and asking for an OTP.",
+        "Customer reports a caller pretended to be from the bank and asked for a PIN.",
+        "Customer reports a charge on card 4111 1111 1111 1111 they don't recognize.",
+        "Customer reports they were asked for a one-time password over the phone.",
+    ],
+)
+def test_safety_scrub_keeps_bare_mentions(safe_bare_mention):
+    """Bare mentions in non-imperative context are not agent requests."""
+    assert scrub_summary(safe_bare_mention) == safe_bare_mention.strip()
+
+
 def test_empty_message_rejected():
     with pytest.raises(Exception):
         normalize("")

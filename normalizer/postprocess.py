@@ -89,12 +89,38 @@ def needs_human_review(case_type: CaseType, severity: Severity, message: str = "
 # --- Summary safety scrub ---------------------------------------------------
 
 # Phrases that would FAIL the safety grader if they appeared in agent_summary.
-# We match an *imperative/request* shape near a sensitive term, then redact.
-_SENSITIVE = r"(pin|otp|password|passcode|cvv|full card number|card number)"
+# We match *imperative/request* shapes near a sensitive term. Bare mentions
+# in neutral context (e.g. "asking for an OTP") are NOT violations — the
+# agent is describing a scam, not requesting the code.
+_SENSITIVE = (
+    r"(pin|otp|one[-\s]?time[-\s]?password|password|passcode|pwd|"
+    r"full\s*card\s*number|card\s*number|cvv)"
+)
 _UNSAFE_PATTERNS = [
-    re.compile(rf"\b(share|send|provide|give|tell|enter|type|confirm)\b[^.]*\b{_SENSITIVE}\b", re.I),
-    re.compile(rf"\bwhat(?:'s| is)\b[^.]*\b{_SENSITIVE}\b", re.I),
-    re.compile(rf"\byour\b[^.]*\b{_SENSITIVE}\b[^.]*\?", re.I),
+    # "share/send/provide/give/tell me your OTP"
+    re.compile(
+        rf"\b(share|send|provide|give|tell|enter|type|confirm|verify|submit|disclose|leak)\b"
+        rf"[^.!?\n]{{0,40}}"
+        rf"\b(your|the|my)?\s*{_SENSITIVE}\b",
+        re.IGNORECASE,
+    ),
+    # "please share your PIN"
+    re.compile(
+        rf"\bplease\b[^.!?\n]{{0,20}}\b(share|send|provide|give|tell|enter|type|confirm)\b"
+        rf"[^.!?\n]{{0,30}}\b{_SENSITIVE}\b",
+        re.IGNORECASE,
+    ),
+    # "what is your PIN/OTP"
+    re.compile(
+        rf"\bwhat(?:'s| is)\b[^.!?\n]{{0,20}}\b(your|the)\b"
+        rf"[^.!?\n]{{0,10}}\b{_SENSITIVE}\b",
+        re.IGNORECASE,
+    ),
+    # Long digit run (card number) under an imperative verb
+    re.compile(
+        r"\b(share|send|provide|give|confirm|enter|type)\b[^.!?\n]{0,40}(?:\d[ -]?){13,19}",
+        re.IGNORECASE,
+    ),
 ]
 
 _SAFE_FALLBACK_SUMMARY = (
@@ -103,7 +129,10 @@ _SAFE_FALLBACK_SUMMARY = (
 
 
 def scrub_summary(summary: str) -> str:
-    """Replace any credential-soliciting summary with a safe neutral one."""
+    """Replace any credential-soliciting summary with a safe neutral one.
+
+    Bare mentions in non-imperative context are NOT replaced.
+    """
     for pat in _UNSAFE_PATTERNS:
         if pat.search(summary):
             return _SAFE_FALLBACK_SUMMARY
