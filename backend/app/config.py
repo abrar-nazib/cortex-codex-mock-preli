@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     safety_fail_loud: bool = Field(default=True)
 
+    # Logging. Override with LOG_LEVEL=DEBUG to see normalizer payloads etc.
+    log_level: str = Field(default="INFO")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

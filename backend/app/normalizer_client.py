@@ -67,4 +67,9 @@ def call_normalize(payload: dict[str, Any]) -> dict[str, Any]:
     """Public entry. Returns the parsed JSON body from the normalizer."""
     s = get_settings()
     url = s.normalizer_url.rstrip("/") + "/normalize"
-    return _post_normalize(url, payload, timeout_s=s.normalizer_timeout_s)
+    log.info("-> normalizer POST url=%s ticket_id=%s timeout=%.1fs",
+             url, payload.get("ticket_id"), s.normalizer_timeout_s)
+    result = _post_normalize(url, payload, timeout_s=s.normalizer_timeout_s)
+    log.info("<- normalizer 200 ticket_id=%s body=%s",
+             payload.get("ticket_id"), result)
+    return result

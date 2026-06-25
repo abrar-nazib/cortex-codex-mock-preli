@@ -38,9 +38,12 @@ def _extract_json(raw: str) -> dict:
 def _classify_with_llm(message: str, settings: Settings) -> NormalizedTicket | None:
     provider = get_provider(settings)
     if provider is None:
+        logger.info("provider=none, using deterministic fallback")
         return None
+    logger.info("LLM classify provider=%s model=%s", settings.provider, settings.openrouter_model)
     try:
         raw = provider.complete(build_messages(message))
+        logger.debug("LLM raw output=%r", raw[:400])
         data = _extract_json(raw)
         return NormalizedTicket.model_validate(data)
     except Exception as exc:  # noqa: BLE001 — any failure must degrade to fallback
@@ -56,5 +59,7 @@ def normalize(message: str, settings: Settings = SETTINGS) -> NormalizedTicket:
     ticket = _classify_with_llm(message, settings)
     if ticket is None:
         ticket = fallback.classify(message)
+        logger.info("fallback classifier result case=%s severity=%s",
+                    ticket.case_type, ticket.severity)
 
     return postprocess.enforce(ticket, message=message)

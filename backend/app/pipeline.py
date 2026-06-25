@@ -62,6 +62,7 @@ def _enforce_human_review(payload: dict[str, Any]) -> dict[str, Any]:
 def classify(db: Session, ticket: TicketIn) -> TicketOut:
     """End-to-end pipeline. Returns a fully validated TicketOut."""
     settings = get_settings()
+    log.info("pipeline ticket_id=%s stage=persist", ticket.ticket_id)
 
     # 1. Persist raw ticket (upsert by ticket_id).
     row = db.get(Ticket, ticket.ticket_id)
@@ -86,13 +87,17 @@ def classify(db: Session, ticket: TicketIn) -> TicketOut:
         "locale": ticket.locale.value if ticket.locale else None,
         "message": ticket.message,
     }
+    log.info("pipeline ticket_id=%s stage=normalize -> normalizer payload=%s",
+             ticket.ticket_id, payload)
 
     try:
         normalized = normalizer_client.call_normalize(payload)
     except normalizer_client.NormalizerError as exc:
-        log.warning("normalizer failed for %s: %s — falling back", ticket.ticket_id, exc)
+        log.warning("pipeline ticket_id=%s normalizer FAILED: %s — falling back",
+                    ticket.ticket_id, exc)
         merged = _conservative_defaults(ticket.ticket_id)
     else:
+        log.info("pipeline ticket_id=%s <- normalizer response=%s", ticket.ticket_id, normalized)
         # 3. Merge. Base model has every field — fill what we got, default the rest.
         merged = {
             "case_type": _coerce_enum(CaseType, normalized.get("case_type"), CaseType.OTHER),
@@ -111,6 +116,8 @@ def classify(db: Session, ticket: TicketIn) -> TicketOut:
 
     # 5. Safety filter — hard fail or sanitize.
     if violates_safety(merged["agent_summary"]):
+        log.warning("pipeline ticket_id=%s safety VIOLATION summary=%r",
+                    ticket.ticket_id, merged["agent_summary"][:200])
         if settings.safety_fail_loud:
             raise RuntimeError(
                 f"safety rule violated for ticket {ticket.ticket_id}: "
@@ -118,6 +125,10 @@ def classify(db: Session, ticket: TicketIn) -> TicketOut:
             )
         merged["agent_summary"] = safe_fallback_summary(ticket.ticket_id)
         merged["human_review_required"] = True
+
+    log.info("pipeline ticket_id=%s stage=merged case=%s severity=%s department=%s review=%s confidence=%.2f",
+             ticket.ticket_id, merged["case_type"].value, merged["severity"].value,
+             merged["department"].value, merged["human_review_required"], merged["confidence"])
 
     # 6. Persist merged result.
     row.case_type = merged["case_type"].value

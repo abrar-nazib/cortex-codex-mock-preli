@@ -34,6 +34,7 @@ class Settings:
     # Shared
     request_timeout: float
     temperature: float
+    log_level: str
 
 
 def load_settings() -> Settings:
@@ -50,6 +51,7 @@ def load_settings() -> Settings:
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1"),
         request_timeout=float(os.getenv("NORMALIZER_TIMEOUT", "25")),
         temperature=float(os.getenv("NORMALIZER_TEMPERATURE", "0")),
+        log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )
 
 
