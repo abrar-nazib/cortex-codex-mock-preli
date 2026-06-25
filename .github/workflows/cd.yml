@@ -53,7 +53,7 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           touch ~/.ssh/known_hosts
-          ssh-keyscan -T 10 -H ${{ vars.VPS_HOST }} 2>/dev/null \
+          ssh-keyscan -T 10 -H 76.13.214.32 2>/dev/null \
             | grep -v '^#' \
             | sort -u \
             >> ~/.ssh/known_hosts
@@ -65,7 +65,7 @@ jobs:
         # mid-deploy and leave the stack half-restarted.
         run: |
           ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=6 \
-            ubuntu@${{ vars.VPS_HOST }} <<'DEPLOY'
+            ubuntu@76.13.214.32 <<'DEPLOY'
             set -e
             cd /home/ubuntu/cortex-codex-mock-preli
             echo "=== git pull --ff-only ==="
