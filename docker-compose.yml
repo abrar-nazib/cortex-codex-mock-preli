@@ -50,12 +50,17 @@ services:
   # teammate's real image / build context when their code lands.
 
   frontend:
-    image: alpine:3.20
+    build:
+      context: ./frontend
     container_name: cortex-frontend
     restart: unless-stopped
     ports:
-      - "38283:5173"
-    command: ["sh", "-c", "echo 'frontend: code not ready yet' && sleep infinity"]
+      - "38283:3000"
+    env_file:
+      - ./frontend/.env
+    depends_on:
+      backend:
+        condition: service_started
 
   normalizer:
     build:
