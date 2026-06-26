@@ -1,59 +1,62 @@
-# CORTEX — QueueStorm Warmup
+# CORTEX — SUST CSE Carnival 2026 (Codex Community Hackathon)
 
-**Team CORTEX** submission for the SUST CSE Carnival 2026 — Codex Community
-Hackathon, Mock Preliminary Round. A small public HTTPS service that classifies
-one customer support ticket at a time into a structured JSON triage record.
+**Team CORTEX** — submission for the **bKash presents SUST CSE Carnival 2026:
+Codex Community Hackathon**, AI/API Challenge · 4-Hour Online Preliminary.
 
-- Submission form: <https://forms.gle/eqVNc5dzhrwaPipJ8>
 - Repo: <https://github.com/abrar-nazib/cortex-codex-mock-preli>
 - Live API base URL: `https://hackathonapi.cortextechnologies.net`
+- Submission form: (see organizer Google Form)
 
-The original task spec is in [`docs/Submission-Warmup_Mock_Preliminary.pdf`](docs/Submission-Warmup_Mock_Preliminary.pdf).
+> **Status:** The official **Problem Statement has not been published yet.**
+> This repo is the scaffold we deploy against the moment it drops — service
+> skeleton, deploy pipeline, safety/escalation guardrail slots, and docs shape
+> are all in place; only the main-endpoint name, request/response schema, and
+> reasoning logic are TBD until the statement lands. Sections marked **TBD**
+> are filled in then.
 
-> Frontend was removed — the grader only hits the backend's two endpoints, so a
-> client app added deploy surface with no grading value. This repo now ships
-> just the backend (Django + DRF + PostgreSQL) and the normalizer (FastAPI).
+Reference docs in this repo (read these together, per the manual):
+- [`docs/SUST_Preli_Team_Instructions_Manual_Sanitized.pdf`](docs/SUST_Preli_Team_Instructions_Manual_Sanitized.pdf) — how to execute + submit
+- [`docs/SUST_Preli_Evaluation_Rubric_Sanitized.pdf`](docs/SUST_Preli_Evaluation_Rubric_Sanitized.pdf) — scoring categories + penalties
 
 ---
 
-## What the service does
+## What we build (per manual §2)
 
-You `POST` one customer message to `/sort-ticket`. You get back:
+A backend API service that:
 
-```json
-{
-  "ticket_id": "T-001",
-  "case_type": "wrong_transfer",
-  "severity": "high",
-  "department": "dispute_resolution",
-  "agent_summary": "Customer reports sending 3000 to the wrong number and needs help recovering it.",
-  "human_review_required": true,
-  "confidence": 0.9
-}
-```
+1. Answers `GET /health` with `{"status":"ok"}` (proves the service is up; must
+   respond within 60s of start — rubric "health readiness").
+2. Accepts the required input JSON on `POST /<main-endpoint>` and returns the
+   required structured output JSON **exactly** as defined in the Problem
+   Statement (right field names, types, enum values, HTTP codes — rubric
+   "API Contract & Schema", 15 pts, automated).
+3. Reasons from the supplied evidence/context (not keyword matching) and
+   routes risky/uncertain cases to human review (rubric "Evidence Reasoning",
+   35 pts, and "Safety & Escalation", 20 pts — safety is a hard requirement,
+   unsafe replies lose points even if the rest looks correct).
+4. Ships a `README.md` explaining setup, run command, AI/model usage, safety
+   logic, and known limitations (rubric "Documentation", 5 pts, manual review).
 
-Two endpoints, both publicly reachable over HTTPS, no auth (§1 of the spec):
+A frontend/UI is **not required** and not judged (manual §2) — we ship none.
 
-| Method | Path           | SLA      | Purpose                                          |
-|--------|----------------|----------|--------------------------------------------------|
-| GET    | `/health`      | < 10 s   | Service health                                   |
-| POST   | `/sort-ticket` | < 30 s   | Classify one customer CRM ticket                 |
+### Endpoints
 
-Response enums are locked (§4):
+| Method | Path                | SLA        | Purpose                                  |
+|--------|---------------------|------------|------------------------------------------|
+| GET    | `/health`           | < 60 s start, fast | `{"status":"ok"}` health probe    |
+| POST   | `/<main-endpoint>` | < 30 s      | Analyze one request, return structured JSON |
 
-- `case_type`: `wrong_transfer` · `payment_failed` · `refund_request` · `phishing_or_social_engineering` · `other`
-- `severity`: `low` · `medium` · `high` · `critical`
-- `department`: `customer_support` · `dispute_resolution` · `payments_ops` · `fraud_risk`
-
-`human_review_required = true` is mandatory for `severity == critical` and for
-`case_type == phishing_or_social_engineering`.
+> The main endpoint name is **TBD** — set to the exact name the Problem
+> Statement specifies (the manual's example uses `/analyze-ticket`, but the
+> statement is authoritative). Until then the backend exposes `/sort-ticket`
+> as a placeholder that exercises the full pipeline end-to-end.
 
 ---
 
 ## Architecture
 
-Two services + a database, communicating only over HTTP / the compose network.
-Each service is owned by a different teammate and lives in its own directory.
+Two services + a database, talking only over HTTP / the compose network.
+Each service lives in its own directory.
 
 ```
                 public HTTPS
@@ -67,7 +70,7 @@ Each service is owned by a different teammate and lives in its own directory.
               ┌────────────────┐         POST /normalize          ┌──────────────┐
               │    backend     │ ──────────────────────────────▶ │  normalizer  │
               │ Django + DRF  │ ◀────────────────────────────── │  FastAPI     │
-              │  + Postgres   │       structured JSON           │  LLM classify│
+              │  + Postgres   │       structured JSON            │  (skeleton)  │
               └───────┬────────┘                                  └──────────────┘
                       │
                       ▼
@@ -76,8 +79,8 @@ Each service is owned by a different teammate and lives in its own directory.
                 └──────────┘
 ```
 
-| Service     | Directory     | Public URL (HTTPS)                     | Internal port | Host port       |
-|--------------|---------------|----------------------------------------|---------------|-----------------|
+| Service     | Directory     | Public URL (HTTPS)                     | Internal port     | Host port       |
+|--------------|---------------|----------------------------------------|-------------------|-----------------|
 | `backend`   | `backend/`    | `https://hackathonapi.cortextechnologies.net` | `8000` (gunicorn) | `127.0.0.1:38181` |
 | `normalizer`| `normalizer/` | _internal only — not exposed publicly_       | `9000` (uvicorn)  | _none_          |
 | `db`        | postgres image | _internal only — not exposed publicly_      | `5432`            | _none_          |
@@ -85,107 +88,161 @@ Each service is owned by a different teammate and lives in its own directory.
 ### Blast surface (intentionally small)
 
 - **Only the backend is reachable from the internet**, through one nginx vhost.
-- The backend's host port binds **`127.0.0.1:38181`** (loopback) — only nginx on
-  the same VPS can reach it; it is not exposed on the public interface.
-- **normalizer and postgres publish no host ports** — they are reachable only
-  inside the compose network via service DNS (`normalizer`, `db`).
-- **No Django admin** is wired (no admin surface).
-- No auth / session / CSRF middleware — the API is stateless JSON, no cookies.
+- Backend host port binds **`127.0.0.1:38181`** (loopback) — only nginx on the
+  VPS reaches it; not exposed on the public interface.
+- **normalizer and postgres publish no host ports** — compose DNS only.
+- No Django admin, no auth/session/CSRF middleware — stateless JSON API.
+- No CORS headers — any client may call the API.
 
 ### How a request flows
 
-1. Caller hits `POST https://hackathonapi.cortextechnologies.net/sort-ticket`.
-2. `backend` validates the request (`TicketInSerializer`), persists the raw ticket by `ticket_id` (upsert).
-3. `backend` calls `POST http://normalizer:9000/normalize` with the full ticket schema, retrying on 5xx / timeout.
-4. The normalizer returns `case_type`, `severity`, `department`, `agent_summary`, `human_review_required`, `confidence`.
-5. `backend` merges that into its base model (which carries every field needed to answer the grader) and applies the **safety filter** on `agent_summary` (§5). If the agent's summary contains an imperative request for a credential, the call returns **HTTP 500** — the grader auto-fails that case.
-6. The merged record is persisted to Postgres and returned to the caller.
+1. Caller hits `POST https://hackathonapi.cortextechnologies.net/<main-endpoint>`.
+2. `backend` validates the request, persists the raw record by its id.
+3. `backend` calls `POST http://normalizer:9000/normalize` with the full
+   payload, retrying on 5xx/timeout; treats the response as **untrusted**
+   (JSON parse + enum coerce + conservative-default fallback).
+4. `backend` merges the result, applies the **safety filter** (never ask for
+   PIN/OTP/password/full card number; never promise unauthorized/irreversible
+   actions), and escalates risky/uncertain cases to human review.
+5. The merged record is persisted to Postgres and returned to the caller.
 
-The normalizer's classifier is the OpenRouter model `google/gemini-2.5-flash`,
-configured via `NORMALIZER_PROVIDER=openrouter` in `normalizer/.env`. If the
-LLM call fails for any reason, the normalizer falls back to a deterministic
-keyword classifier that handles every spec case correctly.
-
-### Key design rules
-
-- **One repo, two service directories.** Each teammate owns their service. Cross-directory changes are announced in chat before commit.
-- **Service-to-service over HTTP only.** No shared Python imports across `backend/` and `normalizer/`.
-- **Schemas live in the backend.** The backend is the public contract surface. Field name changes require telling the other teammate before merging. (Now DRF serializers in `backend/tickets/serializers.py`.)
-- **Secrets only via env vars.** No `OPENROUTER_API_KEY` or DB credentials committed. `normalizer/.env` is gitignored.
-- **No GPU.** CPU-only VPS, `docker compose up` only.
-
-### Project layout
-
-```
-cortex-codex-mock-preli/
-├── README.md                      ← you are here
-├── docker-compose.yml             ← db + backend + normalizer (frontend removed)
-├── .github/workflows/cd.yml       ← push-to-main SSH deploy
-├── deploy/
-│   └── nginx/cortex-codex.conf    ← single vhost (api only; HTTPS termination)
-├── backend/                       ← Django + DRF service (this team owns it)
-│   ├── README.md / CLAUDE.md
-│   ├── Dockerfile / requirements.txt
-│   ├── manage.py
-│   ├── cortex/                    # Django project (settings, urls, wsgi/asgi)
-│   └── tickets/                   # models, serializers, views, pipeline,
-│                                 # normalizer_client, safety, tests
-├── normalizer/                    ← FastAPI LLM classifier (teammate-owned)
-│   └── ...
-└── docs/
-    ├── TEST_PLAN.md               ← 15 paste-ready test requests + assertions
-    ├── BENCHMARK.md               ← prompt-diagnostic writeup
-    └── Submission-Warmup_Mock_Preliminary.pdf
-```
+The normalizer is currently a **generic skeleton** (`/health` + `/normalize`
+placeholder). The real reasoning/classification module wires in there once the
+Problem Statement locks the contract.
 
 ---
 
 ## Running it locally
 
 ```bash
-# db + backend + normalizer (no frontend anymore)
-docker compose up -d --build
+# db + backend + normalizer
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 # Health probe
 curl -s http://localhost:38181/health
 # -> {"status":"ok"}
 
-# Classify a ticket
+# Analyze a request (placeholder endpoint until the problem statement names it)
 curl -s -X POST http://localhost:38181/sort-ticket \
   -H 'content-type: application/json' \
   -d '{"ticket_id":"T-001","channel":"app","locale":"en",
-       "message":"I sent 3000 taka to a wrong number this morning, please help me get it back"}'
+       "message":"<sample input from the problem statement>"}'
 ```
 
-Swagger UI: <http://localhost:38181/docs/>
+Swagger UI (drf_spectacular): <http://localhost:38181/docs/> — gated by
+`DJANGO_ENABLE_DOCS`, flipped off in production via `docker-compose.prod.yml`.
+
+### Backend dev (host)
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env                 # set DATABASE_URL + NORMALIZER_URL
+python manage.py migrate
+python manage.py runserver 127.0.0.1:8000
+```
 
 ### Tests
 
-Django's built-in test runner (no pytest). Against the compose postgres:
+Django's built-in test runner (no pytest), normalizer mocked with
+`unittest.mock.patch` — network-free:
 
 ```bash
 docker compose exec backend python manage.py test
-# single file:
 docker compose exec backend python manage.py test tickets.tests.test_sort_ticket
 ```
 
-The tests stub the normalizer with `unittest.mock.patch`, so they're network-free.
+---
+
+## Docker fallback (manual §8)
+
+The repo ships a buildable image so judges can run it without a public endpoint.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# or, single-image fallback once the backend Dockerfile is the judged entrypoint:
+# docker build -t cortex-hackathon ./backend
+# docker run -p 8000:8000 --env-file judging.env cortex-hackathon
+```
+
+| Rule (manual §8)            | This repo                                            |
+|-----------------------------|------------------------------------------------------|
+| Image size < 500 MB (1 GB hard) | `python:3.11-slim` base, no heavy deps           |
+| GPU                         | not used                                              |
+| Large local model weights   | not used                                              |
+| Multi-GB downloads at runtime | not used                                            |
+| Runtime training            | not used                                              |
+| Port binding                | `0.0.0.0` (container) → `127.0.0.1:38181` (host) via nginx |
+| `/health` readiness         | responds within seconds of start                     |
+| Secrets                     | env vars only — never baked in; `.env` gitignored     |
+
+---
+
+## AI / model usage (manual §9, rubric Documentation)
+
+- **Approach:** hybrid rules + optional lightweight LLM (allowed; GPU not
+  allowed). The task is designed to be solvable without paid APIs, so the
+  deterministic path must score on its own; the LLM only augments language
+  understanding / structured-reasoning support where it helps.
+- **Provider:** TBD once the Problem Statement defines what the normalizer
+  must actually produce. The skeleton's `normalizer/requirements.txt` drops LLM
+  deps until then; they get added back behind the same `/normalize` contract.
+- **No GPU, no multi-GB weights, no runtime training** (manual §8/§9).
+- **Keys:** any provider key is supplied via env vars only (`normalizer/.env`,
+  gitignored) and, for judging, via the official private submission field —
+  never committed to the repo.
+
+## Safety logic (rubric "Safety & Escalation", 20 pts — hard requirement)
+
+Guardrails enforced **server-side** in the backend after merging the normalizer
+output, before the response is returned:
+
+1. **Credential requests** — `agent_summary`/any generated text must never ask
+   the customer for PIN, OTP, password, or a full card number. A violation
+   fails the case (HTTP 500) rather than returning unsafe text.
+2. **Unsafe promises** — never promise unauthorized approvals, irreversible
+   actions, account changes, or guaranteed outcomes (the system is a support
+   copilot, not an authority — manual §14).
+3. **Data exposure** — never echo or leak sensitive private information; only
+   synthetic data is used (manual §14).
+4. **Escalation** — risky, uncertain, or authorization-sensitive cases route
+   to human review rather than auto-resolving. Escalation is mandatory when
+   the rubric's risk conditions hit (exact triggers TBD from the Problem
+   Statement).
+5. **Fail-safe** — if the normalizer is down or returns garbage, the backend
+   stays answerable via conservative defaults; it never trades safety for
+   confidence.
+
+## Known limitations
+
+- **Problem Statement pending** — main-endpoint name, request/response schema,
+  enum values, and reasoning logic are placeholders until the statement
+  publishes. Anything marked TBD above fills in then.
+- **Normalizer is a skeleton** — `/normalize` returns a placeholder; the real
+  classifier wires in post-statement.
+- **No real customer/production data** — synthetic data only (manual §14).
+- **Docs surface** — `/docs/` is up for now and flipped off in production via
+  `DJANGO_ENABLE_DOCS=false` in `docker-compose.prod.yml`.
 
 ---
 
 ## Live deployment
 
 The CD workflow (`.github/workflows/cd.yml`) SSHs into the VPS on every push to
-`main` and runs `docker compose up -d --build`. Migrations run inside the
-backend container's CMD on every start (idempotent), so the deploy is a one-liner.
+`main` and runs
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
+Migrations + `collectstatic` run inside the backend container's CMD on every
+start (idempotent), so the deploy is a one-liner. nginx + Let's Encrypt handle
+HTTPS termination; the runbook is [`deploy/nginx/cortex-codex.conf`](deploy/nginx/cortex-codex.conf).
 
-nginx config + certbot runbook: [`deploy/nginx/cortex-codex.conf`](deploy/nginx/cortex-codex.conf).
+Per-request lifecycle logging (every request/response in/out) is emitted by
+`backend/tickets/middleware.py` — `docker compose logs -f backend` shows the
+full cycle.
 
 ---
 
-## Submission
-
-The Google form asks for six fields. The repo provides:
+## Submission (Google Form fields)
 
 | Field                 | Value                                                           |
 |-----------------------|-----------------------------------------------------------------|
@@ -193,27 +250,48 @@ The Google form asks for six fields. The repo provides:
 | GitHub repository URL | `https://github.com/abrar-nazib/cortex-codex-mock-preli`        |
 | Live API base URL     | `https://hackathonapi.cortextechnologies.net`                   |
 | Deployment platform   | Self-hosted VPS via GitHub Actions + docker compose            |
-| LLM used              | Yes — `openrouter/google/gemini-2.5-flash` for classification   |
-| Known issues          | See [`docs/BENCHMARK.md`](docs/BENCHMARK.md)                   |
+| AI/model usage        | Hybrid rules + optional lightweight LLM (no GPU) — TBD post-statement |
+| Known limitations     | See "Known limitations" above                                  |
+| Safety logic          | See "Safety logic" above                                        |
+| No secrets committed  | Confirmed — `.env` gitignored, keys via env vars / private form |
+| No real customer data | Confirmed — synthetic data only                                 |
 
-If the live URL is unreachable, the grader will fall back to deploying
-locally using this repo + `docker compose up -d --build`.
-
----
-
-## Tests, benchmarks, and known limitations
-
-- **15 spec-shaped requests** with assertions: [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md). Score on the current stack: **15 / 15**.
-- **Real-world banking-query stress (BANKING77)**: polite inquiry voice ("Why was I charged twice?") gets classified as `other`. Analysis in [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
+If the live URL is unreachable, the grader falls back to
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
+against this repo (manual §6, priority 2/3).
 
 ---
+
+## Project layout
+
+```
+cortex-codex-mock-preli/
+├── README.md                      ← you are here
+├── docker-compose.yml              ← base: db + backend + normalizer (dev)
+├── docker-compose.prod.yml         ← prod overlay: debug off, docs off
+├── .github/workflows/cd.yml        ← push-to-main SSH deploy
+├── deploy/nginx/cortex-codex.conf ← single vhost (HTTPS termination)
+├── backend/                        ← Django + DRF service (public entrypoint)
+│   ├── Dockerfile / requirements.txt
+│   ├── manage.py
+│   ├── cortex/                     # Django project (settings, urls, wsgi/asgi)
+│   └── tickets/                    # models, serializers, views, pipeline,
+│                                 # normalizer_client, safety, middleware, tests
+├── normalizer/                     ← FastAPI skeleton (generic /health + /normalize)
+│   ├── main.py / requirements.txt / Dockerfile
+└── docs/
+    ├── SUST_Preli_Team_Instructions_Manual_Sanitized.pdf
+    └── SUST_Preli_Evaluation_Rubric_Sanitized.pdf
+```
 
 ## Team & ownership
 
-| Directory      | Owner           | Stack                                |
-|----------------|-----------------|--------------------------------------|
-| `backend/`     | CORTEX backend  | Python · Django · DRF · PostgreSQL   |
-| `normalizer/`  | CORTEX normalizer | Python · FastAPI · Pydantic · OpenRouter |
+| Directory      | Owner          | Stack                                | Members |
+|----------------|----------------|--------------------------------------|---------|
+| `backend/`     | CORTEX backend | Python · Django · DRF · PostgreSQL   | TBD     |
+| `normalizer/`  | CORTEX normalizer | Python · FastAPI · Pydantic       | TBD     |
+
+Team name: **CORTEX**. Member names/roles to be added before submission.
 
 We work on `main` directly — single repo, shared history, no long-lived
-branches (the round's training exercise is exactly this collaboration shape).
+branches.
