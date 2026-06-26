@@ -28,7 +28,7 @@ is applied on every start.
 
 ## Endpoints
 
-- `GET /health` — health probe (`{"status":"ok","normalizer_url":...}`)
+- `GET /health` — health probe (`{"status":"ok"}`)
 - `POST /sort-ticket` — classify one CRM ticket
 - `GET /docs/` — drf_spectacular swagger UI
 - `GET /api/schema/` — OpenAPI schema

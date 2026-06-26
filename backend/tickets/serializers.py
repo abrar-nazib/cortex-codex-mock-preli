@@ -45,4 +45,3 @@ class TicketOutSerializer(serializers.Serializer):
 
 class HealthOutSerializer(serializers.Serializer):
     status = serializers.CharField()
-    normalizer_url = serializers.CharField()

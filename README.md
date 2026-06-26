@@ -148,7 +148,7 @@ docker compose up -d --build
 
 # Health probe
 curl -s http://localhost:38181/health
-# -> {"status":"ok","normalizer_url":"http://normalizer:9000"}
+# -> {"status":"ok"}
 
 # Classify a ticket
 curl -s -X POST http://localhost:38181/sort-ticket \

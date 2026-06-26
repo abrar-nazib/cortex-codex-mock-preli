@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 
-from django.conf import settings
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
@@ -28,10 +27,7 @@ class HealthView(APIView):
 
     @extend_schema(responses=HealthOutSerializer)
     def get(self, request):
-        return Response(
-            {"status": "ok", "normalizer_url": settings.NORMALIZER_URL},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
 
 
 class SortTicketView(APIView):
