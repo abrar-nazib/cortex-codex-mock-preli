@@ -1,6 +1,5 @@
-pydantic>=2.5
-httpx>=0.27
-pytest>=8.0
+# Generic FastAPI skeleton. The LLM provider deps get added back once the
+# problem statement lands and we know what the normalizer actually calls.
 fastapi>=0.110
 uvicorn>=0.29
-python-dotenv>=1.0
+pydantic>=2.5

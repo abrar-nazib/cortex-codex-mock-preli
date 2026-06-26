@@ -1,23 +1,6 @@
-"""QueueStorm Normalizer — message → structured ticket classification.
+"""Cortex Normalizer — generic FastAPI skeleton.
 
-    from Normalizer import normalize
-    result = normalize("I sent 3000 to wrong number")
-    result.model_dump()  # -> the response schema dict
+The real classification contract is wired in once the official Problem
+Statement for the SUST CSE Carnival 2026 preliminary is published. Until then
+this package only exposes the FastAPI app in `main.py`.
 """
-from .normalizer import normalize
-from .schema import (
-    CaseType,
-    Department,
-    NormalizedTicket,
-    Severity,
-    TicketInput,
-)
-
-__all__ = [
-    "normalize",
-    "NormalizedTicket",
-    "TicketInput",
-    "CaseType",
-    "Severity",
-    "Department",
-]

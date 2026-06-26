@@ -1,56 +1,48 @@
-# Normalizer Module
+# Normalizer — Generic FastAPI Skeleton
 
-The AI core of **QueueStorm**: reads one customer support message and returns a
-structured classification. The Backend (FastAPI) wraps this in `POST /sort-ticket`.
+Placeholder service for the **SUST CSE Carnival 2026 — Codex Community Hackathon**
+preliminary. The official Problem Statement has not been published yet, so this
+module is intentionally generic: it stays up, answers `/health`, and accepts any
+JSON on `/normalize`. The real classification/reasoning logic replaces the
+placeholder here once the problem statement lands.
 
-## Quick start
+## Endpoints
+
+| Method | Path        | Body                                | Response                                   |
+|--------|-------------|-------------------------------------|--------------------------------------------|
+| GET    | `/health`   | —                                   | `{"status":"ok"}`                          |
+| POST   | `/normalize`| any JSON (optional `message` field) | `{"status":"placeholder","note":"…","echoed":{…}}` |
+
+`/normalize` rejects an explicitly empty `message` with `422`; everything else
+is accepted and echoed back.
+
+## Run
+
+From the repo root (parent of this package):
+
 ```bash
-pip install -r requirements.txt
-cp .env.example .env        # defaults to rules-only mode (no LLM, no network)
+pip install -r normalizer/requirements.txt
+uvicorn normalizer.main:app --port 9000
 ```
 
-```python
-from Normalizer import normalize
+Docker (built by the root `docker-compose.yml`):
 
-result = normalize("I sent 3000 to wrong number")
-print(result.model_dump(mode="json"))
-# {'case_type': 'wrong_transfer', 'severity': 'high',
-#  'department': 'dispute_resolution', 'agent_summary': '...',
-#  'human_review_required': False, 'confidence': 0.7}
-```
-
-## Backend integration
-```python
-from Normalizer import normalize
-
-@app.post("/sort-ticket")
-def sort_ticket(req: TicketRequest):
-    result = normalize(req.message)
-    return {"ticket_id": req.ticket_id, **result.model_dump(mode="json")}
-```
-
-## Modes (set `NORMALIZER_PROVIDER`)
-| value | behavior |
-|---|---|
-| `rules` *(default)* | deterministic keyword classifier — no network, always works |
-| `openrouter` | cloud LLM (set `OPENROUTER_API_KEY`) |
-| `ollama` | local LLM, GPU-free |
-
-The LLM is *primary*; if it fails/times out/returns bad JSON, the rule-based
-classifier takes over automatically — the service never errors out.
-
-## Guarantees
-- Output always validates against the response schema (`schema.py`).
-- `department` is derived deterministically from `case_type`.
-- `human_review_required` is forced `true` for critical / phishing.
-- `agent_summary` is scrubbed so it never asks for PIN/OTP/password/card (graded safety rule).
-
-## Tests
 ```bash
-python -m pytest Normalizer/tests/ -v
+docker compose up -d --build normalizer
+curl -s http://127.0.0.1:9000/health        # only reachable on the compose network
 ```
-Covers all 5 public sample cases, department mapping, the review flag,
-confidence range, schema shape, and the safety scrub.
 
 ## Files
-See [`Plan.md`](./Plan.md) for the full design and per-file responsibilities.
+
+| File | Responsibility |
+|---|---|
+| `main.py` | FastAPI app: `/health`, `/normalize` (generic skeleton) |
+| `requirements.txt` | fastapi, uvicorn, pydantic (LLM deps re-added post-problem-statement) |
+| `Dockerfile` | `python:3.11-slim`, runs `uvicorn normalizer.main:app` on `:9000` |
+| `.env.example` | placeholder — no env consumed yet |
+
+## What comes next
+
+When the Problem Statement is published: lock the `/normalize` request/response
+schema here, add the reasoning provider (rules and/or LLM) behind it, and wire
+the safety + escalation guardrails the rubric requires.
