@@ -6,9 +6,10 @@
 #   1. SSH to vps
 #   2. cd /home/ubuntu/cortex-codex-mock-preli
 #   3. git pull --ff-only (refuse non-FF to avoid the "two histories" mess)
-#   4. docker compose up -d --build
-#      (db + backend + normalizer; frontend removed. Migrations run inside
-#      the backend container's CMD, so the deploy stays a one-liner.)
+#   4. docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#      (db + backend + normalizer; frontend removed. The prod overlay turns
+#      off debug + (eventually) the docs surface. Migrations run inside the
+#      backend container's CMD, so the deploy stays a one-liner.)
 
 name: CD to VPS
 
@@ -72,6 +73,6 @@ jobs:
             cd /home/ubuntu/cortex-codex-mock-preli
             echo "=== git pull --ff-only ==="
             git pull --ff-only
-            echo "=== docker compose up -d --build ==="
-            docker compose up -d --build
+            echo "=== docker compose -f ... up -d --build ==="
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
           DEPLOY

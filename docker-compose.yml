@@ -49,6 +49,8 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-change-me}
       DJANGO_DEBUG: "false"
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-hackathonapi.cortextechnologies.net,localhost,127.0.0.1}
+      # drf_spectacular /docs/ + /api/schema/. Off in prod (see docker-compose.prod.yml).
+      DJANGO_ENABLE_DOCS: "true"
       DATABASE_URL: postgres://${POSTGRES_USER:-cortex}:${POSTGRES_PASSWORD:-cortex_pw}@db:5432/${POSTGRES_DB:-cortex}
       NORMALIZER_URL: http://normalizer:9000
       NORMALIZER_TIMEOUT_S: "20"

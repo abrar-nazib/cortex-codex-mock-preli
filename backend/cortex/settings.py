@@ -36,6 +36,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "tickets.middleware.RequestResponseLogMiddleware",
     # No CSRF / session / auth middleware: stateless JSON API, no auth, no cookies.
 ]
 
@@ -67,9 +68,26 @@ NORMALIZER_RETRY_BACKOFF_S = env.float("NORMALIZER_RETRY_BACKOFF_S", default=0.5
 SAFETY_FAIL_LOUD = env.bool("SAFETY_FAIL_LOUD", default=True)
 LOG_LEVEL = env("LOG_LEVEL", default="INFO").upper()
 
+# drf_spectacular swagger UI at /docs/ + OpenAPI schema at /api/schema/.
+# Gate so prod can turn the surface off with DJANGO_ENABLE_DOCS=false
+# (one-line flip in docker-compose.prod.yml). Defaults on for dev.
+ENABLE_DOCS = env.bool("DJANGO_ENABLE_DOCS", default=True)
+
 # ─── DRF + drf_spectacular ───────────────────────────────────────────────────
+# JSON only in production (DEBUG=False) — suppresses the Browsable API HTML
+# page browsers get when they send `Accept: text/html`, so /health etc. always
+# return JSON. Browsable API stays available locally under DEBUG=True.
+if DEBUG:
+    _DEFAULT_RENDERER_CLASSES = [
+        "rest_framework.renderers.JSONRenderer",
+        "rest_framework.renderers.BrowsableAPIRenderer",
+    ]
+else:
+    _DEFAULT_RENDERER_CLASSES = ["rest_framework.renderers.JSONRenderer"]
+
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_RENDERER_CLASSES": _DEFAULT_RENDERER_CLASSES,
     # ValidationError -> 422 (matches the original FastAPI/Pydantic contract).
     "EXCEPTION_HANDLER": "tickets.exceptions.custom_exception_handler",
 }
