@@ -22,7 +22,9 @@ COPY . ./
 
 EXPOSE 8000
 
-# Migrate on every start (idempotent), then serve with gunicorn.
+# collectstatic + migrate on every start (idempotent), then serve with gunicorn.
+# collectstatic writes to STATIC_ROOT (/app/staticfiles), bind-mounted to
+# ./backend/staticfiles on the host so nginx serves the assets directly.
 # workers=1 keeps the request flow simple; the normalizer round-trip is the
 # slow part, not CPU. timeout=60 covers the 30s SLA + normalizer retries.
-CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn cortex.wsgi:application -b 0.0.0.0:8000 --workers 1 --timeout 60"]
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && python manage.py migrate --noinput && gunicorn cortex.wsgi:application -b 0.0.0.0:8000 --workers 1 --timeout 60"]

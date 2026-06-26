@@ -27,6 +27,7 @@ ALLOWED_HOSTS = env.list(
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.staticfiles",  # collectstatic + STATIC_URL serving
     "rest_framework",
     "drf_spectacular",
     "tickets",
@@ -86,6 +87,9 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
+# collectstatic target. Bind-mounted to ./backend/staticfiles on the host so
+# nginx can serve the collected assets directly (see deploy/nginx/*.conf).
+STATIC_ROOT = "/app/staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ─── Logging (lifecycle, mirrors the previous basicConfig) ──────────────────

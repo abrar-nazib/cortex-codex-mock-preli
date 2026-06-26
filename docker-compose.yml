@@ -40,6 +40,11 @@ services:
     # on the public interface.
     ports:
       - "127.0.0.1:38181:8000"
+    # collectstatic writes to /app/staticfiles in the container; this bind
+    # mount surfaces them on the host at ./backend/staticfiles so nginx can
+    # serve /static/ directly without going through gunicorn.
+    volumes:
+      - ./backend/staticfiles:/app/staticfiles
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-change-me}
       DJANGO_DEBUG: "false"
